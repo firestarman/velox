@@ -1349,6 +1349,9 @@ bool canBeEvaluatedByCudf(std::shared_ptr<velox::exec::Expr> expr, bool deep) {
     }
   }
 
+  if (CudfConfig::getInstance().debugEnabled) {
+    LOG(INFO) << "Expression can run on cuDF: " << expr->toString();
+  }
   return true;
 }
 
