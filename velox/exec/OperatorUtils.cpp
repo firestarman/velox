@@ -368,6 +368,12 @@ VectorPtr wrapChild(
     return child;
   }
 
+  VELOX_CHECK_NOT_NULL(
+      child,
+      "Cannot wrap a null child vector in a dictionary. "
+      "This may indicate that a RowVector has an uninitialized column, "
+      "possibly due to incomplete data materialization from an upstream operator.");
+
   return BaseVector::wrapInDictionary(nulls, mapping, size, child);
 }
 
