@@ -364,15 +364,15 @@ VectorPtr wrapChild(
     BufferPtr mapping,
     const VectorPtr& child,
     BufferPtr nulls) {
+  VELOX_CHECK_NOT_NULL(
+      child,
+      "Cannot wrap a null child vector. "
+      "This may indicate that a RowVector has an uninitialized column, "
+      "possibly due to incomplete data materialization from an upstream operator.");
+
   if (!mapping) {
     return child;
   }
-
-  VELOX_CHECK_NOT_NULL(
-      child,
-      "Cannot wrap a null child vector in a dictionary. "
-      "This may indicate that a RowVector has an uninitialized column, "
-      "possibly due to incomplete data materialization from an upstream operator.");
 
   return BaseVector::wrapInDictionary(nulls, mapping, size, child);
 }
@@ -538,6 +538,15 @@ void projectChildren(
     maxInputChannel = std::max<int>(maxInputChannel, inputChannel);
     maxOutputChannel = std::max<int>(maxOutputChannel, outputChannel);
   }
+  if (maxInputChannel >= 0) {
+    VELOX_CHECK_LT(
+        static_cast<size_t>(maxInputChannel),
+        src.size(),
+        "Input channel {} is out of bounds for source vector with {} children. "
+        "This may indicate a schema mismatch between operators.",
+        maxInputChannel,
+        src.size());
+  }
   // Cache for already wrapped children to avoid wrapping the same child
   // multiple times.
   std::vector<VectorPtr> wrappedChildren(1 + maxInputChannel);
@@ -572,6 +581,13 @@ void projectChildren(
     const BufferPtr& mapping,
     WrapState* state) {
   for (const auto& projection : projections) {
+    VELOX_CHECK_LT(
+        static_cast<size_t>(projection.inputChannel),
+        src.size(),
+        "Input channel {} is out of bounds for source vector with {} children. "
+        "This may indicate a schema mismatch between operators.",
+        projection.inputChannel,
+        src.size());
     projectedChildren[projection.outputChannel] = state
         ? wrapOne(size, mapping, src[projection.inputChannel], nullptr, *state)
         : wrapChild(size, mapping, src[projection.inputChannel]);
