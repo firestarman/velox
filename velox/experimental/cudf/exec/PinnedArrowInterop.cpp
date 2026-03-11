@@ -224,6 +224,7 @@ void buildArrowColumnFromPacked(
 
   auto typeId = col.type.id();
   bool isString = (typeId == cudf::type_id::STRING);
+  bool isList = (typeId == cudf::type_id::LIST);
 
   if (isString) {
     // String column: cudf stores offsets child + chars data.
@@ -297,6 +298,53 @@ void buildArrowColumnFromPacked(
         idx++;
       }
     }
+  } else if (isList) {
+    // List column: cudf stores offsets as the first child and elements as the
+    // second child. Arrow layout: buf[0]=validity, buf[1]=offsets, child[0]=values.
+    CUDF_EXPECTS(col.num_children >= 2, "List column must have offsets and elements child");
+
+    auto& offsetsCol = meta[idx]; // peek, don't advance yet
+    bool largeOffsets = (offsetsCol.type.id() == cudf::type_id::INT64);
+    auto arrowListType =
+        largeOffsets ? NANOARROW_TYPE_LARGE_LIST : NANOARROW_TYPE_LIST;
+    NANOARROW_THROW_NOT_OK(ArrowArrayInitFromType(out, arrowListType));
+    out->length = col.size;
+    out->null_count = col.null_count;
+
+    // validity
+    if (col.null_mask_offset != -1) {
+      auto* buf = ArrowArrayBuffer(out, 0);
+      auto maskBytes =
+          static_cast<int64_t>(cudf::bitmask_allocation_size_bytes(col.size));
+      attachHostBufToArrowBuffer(
+          buf, hostBuf, hostBase + col.null_mask_offset, maskBytes);
+      out->buffers[0] = buf->data;
+    }
+
+    // Consume the offsets child in metadata. LIST offsets are stored in the
+    // first child column and referenced by Arrow buffer 1.
+    idx++; // advance past offsetsCol
+    for (int c = 0; c < offsetsCol.num_children; ++c) {
+      idx++;
+    }
+
+    auto offsetElemSize =
+        largeOffsets ? sizeof(int64_t) : sizeof(int32_t);
+    auto offsetsBytes =
+        static_cast<int64_t>(col.size + 1) * offsetElemSize;
+    auto* offsetsBuf = ArrowArrayBuffer(out, 1);
+    if (offsetsCol.data_offset != -1) {
+      attachHostBufToArrowBuffer(
+          offsetsBuf,
+          hostBuf,
+          hostBase + offsetsCol.data_offset,
+          offsetsBytes);
+    }
+    out->buffers[1] = offsetsBuf->data;
+
+    // Arrow LIST has exactly one logical child: the values column.
+    NANOARROW_THROW_NOT_OK(ArrowArrayAllocateChildren(out, 1));
+    buildArrowColumnFromPacked(meta, idx, hostBase, hostBuf, out->children[0]);
   } else {
     // Fixed-width or other column
     auto arrowType = NANOARROW_TYPE_UNINITIALIZED;
@@ -372,6 +420,10 @@ void buildArrowColumnFromPacked(
       case cudf::type_id::DECIMAL128:
         arrowType = NANOARROW_TYPE_DECIMAL128;
         elemSize = 16;
+        break;
+      case cudf::type_id::STRUCT:
+        arrowType = NANOARROW_TYPE_STRUCT;
+        elemSize = 0;
         break;
       default:
         arrowType = NANOARROW_TYPE_BINARY;
