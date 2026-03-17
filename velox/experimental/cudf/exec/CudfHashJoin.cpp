@@ -255,10 +255,29 @@ void CudfHashJoinBuild::noMoreInput() {
     shared_tbls.push_back(std::move(tbl));
   }
   // set hash table to CudfHashJoinBridge
+  const auto splitGroupId = operatorCtx_->driverCtx()->splitGroupId;
   auto joinBridge = operatorCtx_->task()->getCustomJoinBridge(
-      operatorCtx_->driverCtx()->splitGroupId, planNodeId());
+      splitGroupId, planNodeId());
   auto cudfHashJoinBridge =
       std::dynamic_pointer_cast<CudfHashJoinBridge>(joinBridge);
+  if (CudfConfig::getInstance().debugEnabled) {
+    VLOG(1) << "CudfHashJoinBuild bridge lookup: planNodeId=" << planNodeId()
+            << ", splitGroupId=" << splitGroupId
+            << ", joinBridge=" << static_cast<const void*>(joinBridge.get())
+            << ", cudfHashJoinBridge="
+            << static_cast<const void*>(cudfHashJoinBridge.get());
+  }
+  VELOX_CHECK_NOT_NULL(
+      joinBridge,
+      "Expected JoinBridge for CudfHashJoinBuild. planNodeId: {}, splitGroupId: {}",
+      planNodeId(),
+      splitGroupId);
+  VELOX_CHECK_NOT_NULL(
+      cudfHashJoinBridge,
+      "Expected CudfHashJoinBridge for CudfHashJoinBuild. planNodeId: {}, splitGroupId: {}, joinBridge: {}",
+      planNodeId(),
+      splitGroupId,
+      static_cast<const void*>(joinBridge.get()));
 
   cudfHashJoinBridge->setBuildStream(stream);
   cudfHashJoinBridge->setHashTable(
@@ -1320,11 +1339,29 @@ exec::BlockingReason CudfHashJoinProbe::isBlocked(ContinueFuture* future) {
     return exec::BlockingReason::kNotBlocked;
   }
 
+  const auto splitGroupId = operatorCtx_->driverCtx()->splitGroupId;
   auto joinBridge = operatorCtx_->task()->getCustomJoinBridge(
-      operatorCtx_->driverCtx()->splitGroupId, planNodeId());
+      splitGroupId, planNodeId());
   auto cudfJoinBridge =
       std::dynamic_pointer_cast<CudfHashJoinBridge>(joinBridge);
-  VELOX_CHECK_NOT_NULL(cudfJoinBridge);
+  if (CudfConfig::getInstance().debugEnabled) {
+    VLOG(1) << "CudfHashJoinProbe bridge lookup: planNodeId=" << planNodeId()
+            << ", splitGroupId=" << splitGroupId
+            << ", joinBridge=" << static_cast<const void*>(joinBridge.get())
+            << ", cudfJoinBridge="
+            << static_cast<const void*>(cudfJoinBridge.get());
+  }
+  VELOX_CHECK_NOT_NULL(
+      joinBridge,
+      "Expected JoinBridge for CudfHashJoinProbe. planNodeId: {}, splitGroupId: {}",
+      planNodeId(),
+      splitGroupId);
+  VELOX_CHECK_NOT_NULL(
+      cudfJoinBridge,
+      "Expected CudfHashJoinBridge for CudfHashJoinProbe. planNodeId: {}, splitGroupId: {}, joinBridge: {}",
+      planNodeId(),
+      splitGroupId,
+      static_cast<const void*>(joinBridge.get()));
   VELOX_CHECK_NOT_NULL(future);
   auto hashObject = cudfJoinBridge->hashOrFuture(future);
 
