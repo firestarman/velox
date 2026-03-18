@@ -25,6 +25,7 @@ add_library(
   CudfOrderBy.cpp
   CudfShufflePartition.cpp
   CudfTopN.cpp
+  CudfWindow.cpp
   DebugUtil.cpp
   OperatorAdapters.cpp
   PinnedArrowInterop.cpp
